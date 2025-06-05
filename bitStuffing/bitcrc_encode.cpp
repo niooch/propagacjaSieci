@@ -69,8 +69,8 @@ int main() {
     int frames = 0;
 
     // Process in 1000-bit chunks
-    for (size_t offset = 0; offset < raw.size(); offset += 1000) {
-        size_t len = std::min<size_t>(1000, raw.size() - offset);
+    for (size_t offset = 0; offset < raw.size(); offset += 80) {
+        size_t len = std::min<size_t>(80, raw.size() - offset);
         std::vector<bool> chunk(raw.begin() + offset, raw.begin() + offset + len);
 
         // Compute CRC on raw chunk

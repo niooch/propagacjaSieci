@@ -75,41 +75,39 @@ int main() {
         // find opening flag
         if (!match_flag(coded, i)) { ++i; continue; }
         size_t start = i + FLAG.size();
-        // find closing flag
         size_t j = start;
         while (j + FLAG.size() <= coded.size() && !match_flag(coded, j)) {
             ++j;
         }
-        if (j + FLAG.size() > coded.size()) break;  // no closing flag
-
-        // extract stuffed payload
-        std::vector<bool> stuffed(coded.begin() + start, coded.begin() + j);
-        // destuff entire payload
-        auto deframed = bit_destuff(stuffed);
-
-        // must be at least 16 bits for CRC
-        if (deframed.size() < 16) {
-            std::cerr << "Frame " << frames << " too short.\n";
-            break;
+        if (j + FLAG.size() > coded.size()) {
+            ++i;
+            continue;
         }
 
-        // split data vs CRC
+        std::vector<bool> stuffed(coded.begin() + start, coded.begin() + j);
+        auto deframed = bit_destuff(stuffed);
+
+        if (deframed.size() < 16) {
+            std::cerr << "Frame " << frames << " too short.\n";
+            ++i;
+            continue;
+        }
+
         std::vector<bool> data(deframed.begin(), deframed.end() - 16);
         uint16_t recv_crc = 0;
         for (size_t k = deframed.size() - 16; k < deframed.size(); ++k)
             recv_crc = (recv_crc << 1) | (deframed[k] ? 1 : 0);
 
-        // verify CRC
         uint16_t calc_crc = crc16_ccitt(data);
         if (calc_crc != recv_crc) {
             std::cerr << "CRC mismatch in frame " << frames << "\n";
+            ++i;
+            continue;
         } else {
-            // append recovered data
             output_data.insert(output_data.end(), data.begin(), data.end());
             ++frames;
         }
 
-        // advance past closing flag
         i = j + FLAG.size();
     }
 
