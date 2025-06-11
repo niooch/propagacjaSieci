@@ -13,7 +13,7 @@
 #include <string>
 
 constexpr int MEDIUM_LENGTH = 80;
-constexpr int MAX_ATTEMPTS   = 10;
+constexpr int MAX_ATTEMPTS   = 32;
 
 enum class NodeState {
     IDLE,
@@ -26,21 +26,14 @@ enum class NodeState {
 struct Node {
     char      name;
     int       position;
-    int       transmission_tick=0;
+    int       transmission_tick;
     NodeState state    = NodeState::IDLE;
     int       backoff  = 0;
     int       attempts = 0;
     int       jam_start = 0;
 
-    Node(char n, int pos, int tx = -1) : name(n), position(pos) {
-        if (tx < 0) {
-            std::mt19937 rng(std::random_device{}());
-            std::uniform_int_distribution<int> dist(0, 1000);
-            transmission_tick = dist(rng);
-        } else {
-            transmission_tick = tx;//1;
-        }
-    }
+    Node(char n, int pos, int tx)
+      : name(n), position(pos), transmission_tick(tx) {}
 
     std::string to_string() const {
         return std::string(1, name) + "(x=" + std::to_string(position) + ")";
@@ -90,13 +83,10 @@ void run_simulation(std::vector<Node>& nodes) {
 
     while (success < nodes.size()) {
         tick++;
-        // initialize log line
-        std::string line(MEDIUM_LENGTH, ' ');
+        std::string line(MEDIUM_LENGTH, '_');
 
-        // propagate signals
         signals = propagate_signal(medium, signals, tick);
 
-        // process each node
         for (auto& node : nodes) {
             if (tick == node.transmission_tick && node.state == NodeState::IDLE) {
                 if (is_medium_idle(medium, node.position)) {
@@ -110,19 +100,13 @@ void run_simulation(std::vector<Node>& nodes) {
             } else if (node.state == NodeState::TRANSMITTING) {
                 auto& cell = medium[node.position];
                 if (cell.has_value() && cell->first != node.name) {
-                    // collision
                     node.state = NodeState::JAMMING;
                     if (node.attempts < MAX_ATTEMPTS) {
                         std::mt19937 rng(std::random_device{}());
                         int factor = 1 << node.attempts;
-                        std::uniform_int_distribution<int> dist(0, factor-1);
+                        std::uniform_int_distribution<int> dist(0, factor);
                         node.backoff = 2 * MEDIUM_LENGTH * dist(rng);
                         node.transmission_tick = tick + 2*MEDIUM_LENGTH + 1 + node.backoff;
-                        std::cout<<factor<<std::endl;
-                    }
-                    else if(node.attempts > MAX_ATTEMPTS+6){
-                        node.state = NodeState::IDLE;
-                        std::cout << "Node " << node.name << " failed after " << node.attempts << " attempts.\n";
                     }
                     node.attempts++;
                     node.jam_start = tick;
@@ -149,39 +133,37 @@ void run_simulation(std::vector<Node>& nodes) {
             }
         }
 
-        // build the log line
         for (int i = 0; i < MEDIUM_LENGTH; ++i) {
             if (medium[i].has_value()) line[i] = medium[i]->first;
         }
         log.push_back(line);
 
-        // reset medium
         std::fill(medium.begin(), medium.end(), std::nullopt);
     }
 
-    // write results
     std::ofstream fout("output.txt");
     for (auto& l : log) fout << l << "\n";
     fout.close();
 
-    // playback
     for (auto& l : log) {
         std::cout << l << "\n";
-        //std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }
 
+// New main: all nodes start transmitting at tick = 0
 int main() {
+    const int NODE_COUNT = 8;  // fixed number, or adjust as desired
     std::mt19937 rng(std::random_device{}());
-    std::uniform_int_distribution<int> node_count_dist(3, 3);
     std::uniform_int_distribution<int> pos_dist(0, MEDIUM_LENGTH - 1);
-    std::uniform_int_distribution<int> tx_dist(0, 100);
 
-    int n = node_count_dist(rng);
     std::vector<Node> nodes;
-    for (int i = 0; i < n; ++i) {
-        nodes.emplace_back(char('a'+i), pos_dist(rng), tx_dist(rng));
+    for (int i = 0; i < NODE_COUNT; ++i) {
+        char name = char('a' + i);
+        int pos = pos_dist(rng);
+        nodes.emplace_back(name, pos, 0);  // transmission_tick = 0 for all
     }
+
     run_simulation(nodes);
     return 0;
 }
